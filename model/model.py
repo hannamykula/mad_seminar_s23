@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 import pytorch_lightning as pl
 from typing import List
-from .dummy_resnet import WideResNet
 from torch import Tensor
 import yaml
 from method.fpi import patch_ex_batch
@@ -50,11 +49,21 @@ class AutoencoderModel(pl.LightningModule):
             return loss
 
     def validation_step(self, batch: Tensor, batch_idx):
-        x = batch
-        recon = self(x)
-        loss = self.loss_fn(recon, x)
-        self.log('val_loss', loss, prog_bar=True, on_epoch=True, on_step=False)
-        return loss
+        batch_size = batch.size()[0]
+        if batch_size > 1:
+            split = batch_size//2
+            batch1, batch2 = torch.split(batch, split_size_or_sections=split)
+            patch1, patch2, label = patch_ex_batch(batch1, batch2)
+    
+            y1 = self(patch1)
+            loss = self.loss_fn(y1, label)
+            self.log('val_loss', loss, prog_bar=True, on_epoch=True, on_step=False)
+
+            y2 = self(patch2)
+            loss = self.loss_fn(y2, label)
+            self.log('val_loss', loss, prog_bar=True, on_epoch=True, on_step=False)
+
+            return loss
 
     def configure_optimizers(self):
         print(self.config)
@@ -131,11 +140,8 @@ class WideResNetEncoder(nn.Module):
         # 1st conv before any network block
         self.conv1 = nn.Conv2d(1, nChannels[0], kernel_size=3, stride=1,
                                padding=1, bias=False)
-        # 1st block
         self.block1 = GroupBlock(n, nChannels[0], nChannels[1], block, [1, 1], dropRate, direction='down')
-        # 2nd block
         self.block2 = GroupBlock(n, nChannels[1], nChannels[2], block, [2, 1], dropRate, direction='down')
-        # 3rd block
         self.block3 = GroupBlock(n, nChannels[2], nChannels[3], block, [2, 1], dropRate, direction='down')
 
         for m in self.modules():
@@ -166,10 +172,7 @@ class WideResNetDecoder(nn.Module):
                         padding=1, bias=False)
         self.conv2 = nn.Conv2d(nChannels[2], nChannels[1], kernel_size=3, stride=1,
                         padding=1, bias=False)
-        # 1st block
         self.block1 = GroupBlock(n, nChannels[1], nChannels[0], block, [1, 1], dropRate, direction='up')
-        # 2nd block
-        # self.block2 = GroupBlock(n, nChannels[1], nChannels[0], block, [1, 1], dropRate, direction='up')
         self.block2 = GroupBlock(n, nChannels[0], num_classes, block, [1, 1], dropRate, direction='up')
 
         for m in self.modules():
