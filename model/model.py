@@ -52,7 +52,8 @@ class AutoencoderModel(pl.LightningModule):
         batch_size = batch.size()[0]
         if batch_size > 1:
             split = batch_size//2
-            batch1, batch2 = torch.split(batch, split_size_or_sections=split)
+
+            batch1, batch2, _ = torch.split(batch, split_size_or_sections=split)
             patch1, patch2, label = patch_ex_batch(batch1, batch2)
     
             y1 = self(patch1)
