@@ -8,7 +8,7 @@ from torch import Tensor
 import yaml
 from method.fpi import patch_ex_batch
 
-class AutoencoderModel(pl.LightningModule):
+class WideResEncoderDecoder(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
         self.encoder = WideResNetEncoder(16, 1, 2)
@@ -22,11 +22,11 @@ class AutoencoderModel(pl.LightningModule):
         return x
 
     def detect_anomaly(self, x: Tensor):
-        rec = self(x)
-        anomaly_map = torch.abs(x - rec)
+        anomaly_map = self(x)
+        # anomaly_map = torch.abs(x - rec)
         anomaly_score = torch.sum(anomaly_map, dim=(1, 2, 3))
         return {
-            'reconstruction': rec,
+            'reconstruction': anomaly_map,
             'anomaly_map': anomaly_map,
             'anomaly_score': anomaly_score
         }
