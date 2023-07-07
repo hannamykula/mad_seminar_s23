@@ -9,12 +9,13 @@ import yaml
 from method.fpi import patch_ex_batch
 
 class WideResEncoderDecoder(pl.LightningModule):
-    def __init__(self, config):
+    def __init__(self, config, device):
         super().__init__()
-        self.encoder = WideResNetEncoder(16, 1, 2)
+        self.encoder = WideResNetEncoder(16, 2)
         self.decoder = WideResNetDecoder(16, 1, 2)
         self.loss_fn = nn.BCELoss()
         self.config = config
+        self.cuda = device
 
     def forward(self, x: Tensor):
         x = self.encoder(x)
@@ -36,7 +37,7 @@ class WideResEncoderDecoder(pl.LightningModule):
         if batch_size > 1:
             split = batch_size//2
             batch1, batch2 = torch.split(batch, split_size_or_sections=split)
-            patch1, patch2, label = patch_ex_batch(batch1, batch2)
+            patch1, patch2, label = patch_ex_batch(batch1, batch2, device=self.cuda)
     
             y1 = self(patch1)
             loss = self.loss_fn(y1, label)
@@ -54,7 +55,7 @@ class WideResEncoderDecoder(pl.LightningModule):
             split = batch_size//2
 
             batch1, batch2, _ = torch.split(batch, split_size_or_sections=split)
-            patch1, patch2, label = patch_ex_batch(batch1, batch2)
+            patch1, patch2, label = patch_ex_batch(batch1, batch2, self.cuda)
     
             y1 = self(patch1)
             loss = self.loss_fn(y1, label)
@@ -132,9 +133,9 @@ class GroupBlock(nn.Module):
 
 
 class WideResNetEncoder(nn.Module):
-    def __init__(self, depth, num_classes, widen_factor=1, dropRate=0.0):
+    def __init__(self, depth, widen_factor=1, dropRate=0.0):
         super(WideResNetEncoder, self).__init__()
-        nChannels = [16, 16*widen_factor, 32*widen_factor, 64*widen_factor]
+        nChannels = [16, 16*widen_factor, 32*widen_factor, 64*widen_factor, 128*widen_factor]
         assert((depth - 4) % 6 == 0)
         n = (depth - 4) / 6
         block = WideResNetBlock
@@ -144,6 +145,7 @@ class WideResNetEncoder(nn.Module):
         self.block1 = GroupBlock(n, nChannels[0], nChannels[1], block, [1, 1], dropRate, direction='down')
         self.block2 = GroupBlock(n, nChannels[1], nChannels[2], block, [2, 1], dropRate, direction='down')
         self.block3 = GroupBlock(n, nChannels[2], nChannels[3], block, [2, 1], dropRate, direction='down')
+        self.block4 = GroupBlock(n, nChannels[3], nChannels[4], block, [2, 1], dropRate, direction='down')
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -159,22 +161,26 @@ class WideResNetEncoder(nn.Module):
         out = self.block1(out)
         out = self.block2(out)
         out = self.block3(out)
+        out = self.block4(out)
+
         return out
 
 class WideResNetDecoder(nn.Module):
     def __init__(self, depth, num_classes, widen_factor=1, dropRate=0.0):
         super(WideResNetDecoder, self).__init__()
-        nChannels = [16, 16*widen_factor, 32*widen_factor, 64*widen_factor]
+        nChannels = [16, 16*widen_factor, 32*widen_factor, 64*widen_factor, 128*widen_factor]
         assert((depth - 4) % 6 == 0)
         # n = (depth - 4) / 6
         n = 1
         block = WideResNetBlock
-        self.conv1 = nn.Conv2d(nChannels[3], nChannels[2], kernel_size=3, stride=1,
+        self.conv1 = nn.Conv2d(nChannels[4], nChannels[2], kernel_size=3, stride=1,
                         padding=1, bias=False)
-        self.conv2 = nn.Conv2d(nChannels[2], nChannels[1], kernel_size=3, stride=1,
-                        padding=1, bias=False)
-        self.block1 = GroupBlock(n, nChannels[1], nChannels[0], block, [1, 1], dropRate, direction='up')
-        self.block2 = GroupBlock(n, nChannels[0], num_classes, block, [1, 1], dropRate, direction='up')
+        # self.conv2 = nn.Conv2d(nChannels[2], nChannels[1], kernel_size=3, stride=1,
+        #                 padding=1, bias=False)
+        # self.block1 = GroupBlock(n, nChannels[4], nChannels[2], block, [1, 1], dropRate, direction='up')
+        self.block2 = GroupBlock(n, nChannels[2], nChannels[1], block, [1, 1], dropRate, direction='up')
+        self.block3 = GroupBlock(n, nChannels[1], nChannels[0], block, [1, 1], dropRate, direction='up')
+        self.block4 = GroupBlock(n, nChannels[0], num_classes, block, [1, 1], dropRate, direction='up')
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -186,9 +192,11 @@ class WideResNetDecoder(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self, x):
+        # out = self.conv1(x)
+        # out = self.conv2(out)
         out = self.conv1(x)
-        out = self.conv2(out)
-        out = self.block1(out)
         out = self.block2(out)
+        out = self.block3(out)
+        out = self.block4(out)
         out = torch.nn.Sigmoid()(out)
         return out

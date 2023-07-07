@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def create_mask_batch(batch, patch_center, patch_width, patch_interp):
     dims = batch.size()[2:4]
@@ -19,7 +19,7 @@ def create_mask_batch(batch, patch_center, patch_width, patch_interp):
 
     return mask_i
 
-def patch_ex_batch(batch1, batch2, brain_core=0.7):
+def patch_ex_batch(batch1, batch2, device, brain_core=0.7):
     # Exchange patches between two batches based on a random interpolation factor
 
     # Create random anomaly
@@ -47,12 +47,16 @@ def patch_ex_batch(batch1, batch2, brain_core=0.7):
     # mask = mask.cpu()
     patch_mask = np.clip(np.ceil(mask.cpu()), 0, 1) # all pixels set to 1
     patch_mask = patch_mask.to(device)
+    mask = mask.to(device)
     mask = mask - patch_mask * offset # get rid of offset
     mask_inv = patch_mask - mask
     zero_mask = 1 - patch_mask # zero in the region of the patch
     # mask = mask.to("cuda")
-    # mask_inv = mask_inv.to("cuda")
+    mask_inv = mask_inv.to(device)
     # Interpolate between patches
+    batch1 = batch1.to(device)
+    batch2 = batch2.to(device)
+  
     patch_set1 = mask * batch1 + mask_inv * batch2
     patch_set2 = mask_inv * batch1 + mask * batch2
 
