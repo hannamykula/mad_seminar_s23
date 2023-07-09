@@ -1,9 +1,10 @@
 seed: 42
 
 split_dir: ./data/splits
+eval_save_dir: ./drive/MyDrive/images_50epochs/
 
 target_size: !<tag:yaml.org,2002:seq> [128,128]
 batch_size: 20
 
 lr: 0.001
-num_epochs: 5
+num_epochs: 50

@@ -1,5 +1,4 @@
 import logging
-# from os import XATTR_SIZE_MAX
 #
 import matplotlib
 matplotlib.use("Agg")
@@ -25,10 +24,11 @@ class Evaluator:
     Federated Downstream Tasks
         - run tasks training_end, e.g. anomaly detection, reconstruction fidelity, disease classification, etc..
     """
-    def __init__(self, model, device, test_data_dict):
+    def __init__(self, model, device, test_data_dict, save_dir):
         # super(Evaluator, self).__init__(model, device, test_data_dict)
         super(Evaluator, self).__init__()
-
+        
+        self.save_dir = save_dir
         self.model = model
         self.device = model.device
         self.test_data_dict = test_data_dict
@@ -57,6 +57,7 @@ class Evaluator:
             'Recall': [],
             'F1': [],
         }
+        saved_images = []
         for dataset_key in self.test_data_dict.keys():
             dataset = self.test_data_dict[dataset_key]
             test_metrics = {
@@ -135,7 +136,8 @@ class Evaluator:
 
                     ious = [res_anomaly, res_healthy]
 
-                    if int(count)==0:
+                    if dataset_key not in saved_images:
+                        saved_images.append(dataset_key)
                         if x_rec_i is None:
                             x_rec_i = np.zeros(x_i.shape)
                         elements = [x_i, x_rec_i, ano_map_i, bboxes.astype(np.int64), x_pos, x_neg]
@@ -147,12 +149,18 @@ class Evaluator:
 
                         diffp, axarr = plt.subplots(1, len(elements), gridspec_kw={'wspace': 0, 'hspace': 0})
                         diffp.set_size_inches(len(elements) * 4, 4)
+                        vmax_anomaly = 0
                         for idx_arr in range(len(axarr)):
                             axarr[idx_arr].axis('off')
                             v_max = v_maxs[idx_arr]
+                            if titles[idx_arr] == 'Anomaly Map':
+                                vmax_anomaly = v_max
+                            elif titles[idx_arr] not in ['Input', 'Reconstruction', 'Anomaly Map', 'GT']:
+                                v_max = vmax_anomaly
                             c_map = 'gray' if v_max == 1 else 'plasma'
                             axarr[idx_arr].imshow(np.squeeze(elements[idx_arr]), vmin=0, vmax=v_max, cmap=c_map)
                             axarr[idx_arr].set_title(titles[idx_arr])
+                        diffp.savefig(self.save_dir + dataset_key + '.png')
 
             for metric in test_metrics:
                 print('{} mean: {} +/- {}'.format(metric, np.nanmean(test_metrics[metric]),
@@ -188,5 +196,6 @@ class Evaluator:
                 yaxis=dict(range=[0, 1]),
             )
             fig_bp.update_yaxes(range=[0, 1], title_text='score', tick0=0, dtick=0.1, showgrid=False)
+            fig_bp.write_image(self.save_dir + metric + '.png')
             fig_bps[metric] = fig_bp
         return metrics, fig_bps, diffp
