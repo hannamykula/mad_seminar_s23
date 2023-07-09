@@ -196,6 +196,6 @@ class Evaluator:
                 yaxis=dict(range=[0, 1]),
             )
             fig_bp.update_yaxes(range=[0, 1], title_text='score', tick0=0, dtick=0.1, showgrid=False)
-            fig_bp.write_image(self.save_dir + metric + '.png')
+            # fig_bp.write_image(self.save_dir + metric + '.png')
             fig_bps[metric] = fig_bp
         return metrics, fig_bps, diffp
